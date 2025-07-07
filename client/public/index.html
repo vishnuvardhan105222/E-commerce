@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Commerce API </title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .section {
+            flex: 1;
+            min-width: 300px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        button, input[type="submit"] {
+            background: #333;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        button:hover, input[type="submit"]:hover {
+            background: #555;
+        }
+        input, select {
+            padding: 8px;
+            margin: 5px 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        #productsList, #cartItems, #ordersList {
+            margin-top: 10px;
+        }
+        .product, .cart-item, .order {
+            border-bottom: 1px solid #eee;
+            padding: 10px 0;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
+    </style>
+</head>
+<body>
+    <h1>E-Commerce API Frontend</h1>
+    
+    <div class="container">
+        <!-- Auth Section -->
+        <div class="section">
+            <h2>Authentication</h2>
+            <div id="authStatus">Not logged in</div>
+            
+            <div class="form-group">
+                <h3>Register</h3>
+                <form id="registerForm">
+                    <input type="text" id="registerName" placeholder="Name" required>
+                    <input type="email" id="registerEmail" placeholder="Email" required>
+                    <input type="password" id="registerPassword" placeholder="Password" required>
+                    <select id="registerRole">
+                        <option value="customer">Customer</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                    <input type="submit" value="Register">
+                </form>
+            </div>
+            
+            <div class="form-group">
+                <h3>Login</h3>
+                <form id="loginForm">
+                    <input type="email" id="loginEmail" placeholder="Email" required>
+                    <input type="password" id="loginPassword" placeholder="Password" required>
+                    <input type="submit" value="Login">
+                </form>
+            </div>
+            
+            <button id="logoutBtn">Logout</button>
+            <button id="getUserBtn">Get Current User</button>
+        </div>
+        
+        <!-- Products Section -->
+        <div class="section">
+            <h2>Products</h2>
+            <button id="getProductsBtn">Get Products</button>
+            
+            <div class="form-group">
+                <h3>Add Product (Admin Only)</h3>
+                <form id="addProductForm">
+                    <input type="text" id="productName" placeholder="Name" required>
+                    <input type="text" id="productDescription" placeholder="Description" required>
+                    <input type="number" id="productPrice" placeholder="Price" step="0.01" required>
+                    <input type="number" id="productStock" placeholder="Stock" required>
+                    <select id="productCategory" required>
+                        <option value="Electronics">Electronics</option>
+                        <option value="Clothing">Clothing</option>
+                        <option value="Books">Books</option>
+                        <option value="Home">Home</option>
+                        <option value="Sports">Sports</option>
+                        <option value="Other">Other</option>
+                    </select>
+                    <input type="submit" value="Add Product">
+                </form>
+            </div>
+            
+            <div id="productsList"></div>
+        </div>
+        
+        <!-- Cart Section -->
+        <div class="section">
+            <h2>Cart</h2>
+            <button id="getCartBtn">Get Cart</button>
+            <button id="clearCartBtn">Clear Cart</button>
+            
+            <div class="form-group">
+                <h3>Add to Cart</h3>
+                <form id="addToCartForm">
+                    <input type="text" id="cartProductId" placeholder="Product ID" required>
+                    <input type="number" id="cartQuantity" placeholder="Quantity" min="1" required>
+                    <input type="submit" value="Add to Cart">
+                </form>
+            </div>
+            
+            <div id="cartItems"></div>
+        </div>
+        
+        <!-- Orders Section -->
+        <div class="section">
+            <h2>Orders</h2>
+            <button id="getOrdersBtn">Get My Orders</button>
+            <button id="getAllOrdersBtn" style="display:none;">Get All Orders (Admin)</button>
+            
+            <div class="form-group">
+                <h3>Create Order</h3>
+                <form id="createOrderForm">
+                    <input type="text" id="shippingAddress" placeholder="Shipping Address" required>
+                    <input type="text" id="paymentMethod" placeholder="Payment Method" required>
+                    <input type="submit" value="Create Order">
+                </form>
+            </div>
+            
+            <div id="ordersList"></div>
+        </div>
+    </div>
+<script>
+    let token = localStorage.getItem('token');
+    let currentUser = null;
+    const API_BASE_URL = 'http://localhost:5000'; // Add your backend URL here
+    
+    // Update UI based on auth status
+    function updateAuthStatus() {
+        const authStatus = document.getElementById('authStatus');
+        const getAllOrdersBtn = document.getElementById('getAllOrdersBtn');
+        
+        if (token) {
+            authStatus.textContent = `Logged in as ${currentUser?.email} (${currentUser?.role})`;
+            authStatus.className = 'success';
+            
+            if (currentUser?.role === 'admin') {
+                getAllOrdersBtn.style.display = 'block';
+            } else {
+                getAllOrdersBtn.style.display = 'none';
+            }
+        } else {
+            authStatus.textContent = 'Not logged in';
+            authStatus.className = '';
+            getAllOrdersBtn.style.display = 'none';
+        }
+    }
+    
+    // Improved fetch helper function
+    async function makeRequest(url, method = 'GET', body = null) {
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const options = {
+            method,
+            headers,
+            credentials: 'include', // Important for cookies/sessions
+            mode: 'cors' // Enable CORS
+        };
+        
+        if (body) {
+            options.body = JSON.stringify(body);
+        }
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/api${url}`, options);
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+            }
+            
+            return await response.json();
+        } catch (error) {
+            console.error('API Error:', error);
+            alert(`API request failed: ${error.message}`);
+            throw error;
+        }
+    }
+    
+    // Auth Event Listeners - Updated with better error handling
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const registerBtn = e.target.querySelector('[type="submit"]');
+        const originalText = registerBtn.value;
+        registerBtn.disabled = true;
+        registerBtn.value = 'Registering...';
+        
+        try {
+            const response = await makeRequest('/auth/register', 'POST', {
+                name: document.getElementById('registerName').value,
+                email: document.getElementById('registerEmail').value,
+                password: document.getElementById('registerPassword').value,
+                role: document.getElementById('registerRole').value
+            });
+            
+            if (response.token) {
+                token = response.token;
+                localStorage.setItem('token', token);
+                currentUser = (await makeRequest('/auth/me')).data;
+                updateAuthStatus();
+                alert('Registration successful!');
+                e.target.reset();
+            } else {
+                throw new Error('No token received');
+            }
+        } catch (error) {
+            console.error('Registration failed:', error);
+            alert(`Registration failed: ${error.message}`);
+        } finally {
+            registerBtn.disabled = false;
+            registerBtn.value = originalText;
+        }
+    });
+
+    // ... [rest of your existing event listeners can remain the same]
+    
+    // Initialize
+    if (token) {
+        (async () => {
+            try {
+                currentUser = (await makeRequest('/auth/me')).data;
+                updateAuthStatus();
+            } catch (error) {
+                console.error('Session check failed:', error);
+                localStorage.removeItem('token');
+                token = null;
+                currentUser = null;
+                updateAuthStatus();
+            }
+        })();
+    }
+</script>
+</body>
+</html>
